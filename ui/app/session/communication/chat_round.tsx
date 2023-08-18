@@ -1,6 +1,5 @@
-import { Message } from "@/app/session/communication/message";
-import Interpreter from "@/app/session/communication/interpreter";
-import LLM from "@/app/session/communication/llm";
+import { Message } from "@/llm/base";
+import { chatCall, Interpreter } from "@/app/session/communication/api_calls";
 import { Approver } from "@/app/session/approval/approver";
 
 export type ChatRoundState =
@@ -10,50 +9,27 @@ export type ChatRoundState =
   | "waiting for approval";
 
 export class ChatRound {
-  private readonly llm: LLM;
-
   constructor(
-    private history: Message[],
-    private readonly setHistory: (message: Message[]) => void,
-    private readonly approverIn: Approver,
-    private readonly approverOut: Approver,
-    private readonly interpreter: Interpreter,
-    private readonly setState: (state: ChatRoundState) => void,
-    private readonly setCodeResult: (result: string) => void,
-  ) {
-    let llmUrl = process.env.NEXT_PUBLIC_LLM_URL ?? "";
-    if (llmUrl === "") {
-      try {
-        llmUrl = location.host;
-      } catch (e) {
-        llmUrl = "localhost";
-      }
-    }
-    llmUrl += "/api/llm";
-    this.llm = new LLM(llmUrl);
-  }
+    private _history: Message[],
+    private readonly _setHistory: (message: Message[]) => void,
+    private readonly _approverIn: Approver,
+    private readonly _approverOut: Approver,
+    private readonly _interpreter: Interpreter,
+    private readonly _setState: (state: ChatRoundState) => void,
+  ) {}
 
   private extendHistory(message: Message) {
-    const newHistory = [...this.history, message];
-    this.setHistory(newHistory);
-    this.history = newHistory;
-  }
-
-  private modifyHistory(message: Message) {
-    const newHistory = [...this.history.slice(0, -1), message];
-    this.setHistory(newHistory);
-    this.history = newHistory;
+    const newHistory = [...this._history, message];
+    this._setHistory(newHistory);
+    this._history = newHistory;
   }
 
   private sendMessage = async (message: Message): Promise<Message> => {
     this.extendHistory(message);
-    this.setState("waiting for model");
-    const response: Message = { role: "model" };
+    this._setState("waiting for model");
+    const response = await chatCall(this._history);
     this.extendHistory(response);
-    await this.llm.chatCall(this.history.slice(0, -1), (response) => {
-      this.modifyHistory(response);
-    });
-    return this.history[this.history.length - 1];
+    return response;
   };
 
   run = async (message: string) => {
@@ -62,18 +38,12 @@ export class ChatRound {
     for (; round < 10; round++) {
       const code = response.code;
       if (code !== undefined) {
-        const approvedIn = await this.approveIn(code);
-        let result = "ERROR: User did not approve code execution!";
-        if (approvedIn) {
-          const resultCode = await this.executeCode(code);
-          const approvedOut = await this.approveOut(resultCode);
-          if (approvedOut) {
-            result = resultCode;
-          }
-        }
+        await this.approveIn(code);
+        const result = await this.executeCode(code);
+        await this.approveOut(result);
         response = await this.sendResult(result);
       } else {
-        this.setState("not active");
+        this._setState("not active");
         break;
       }
     }
@@ -83,26 +53,22 @@ export class ChatRound {
   };
 
   private approveIn = async (code: string) => {
-    this.setState("waiting for approval");
-    return await this.approverIn.getApproval();
+    this._setState("waiting for approval");
+    await this._approverIn.getApproval(code);
   };
 
   private executeCode = async (code: string): Promise<string> => {
-    this.setState("waiting for interpreter");
-    return await this.interpreter.run(code);
+    this._setState("waiting for interpreter");
+    return await this._interpreter.run(code);
   };
 
   private approveOut = async (result: string) => {
-    this.setState("waiting for approval");
-    const emptyAutoApprove = result === "";
-    const resultText = emptyAutoApprove
+    this._setState("waiting for approval");
+    const tmpAutoApprove = result === "";
+    const resultText = tmpAutoApprove
       ? "(empty output was automatically approved)"
       : result;
-    this.setCodeResult(resultText);
-    if (!emptyAutoApprove) {
-      return await this.approverOut.getApproval();
-    }
-    return true;
+    await this._approverOut.getApproval(resultText, tmpAutoApprove);
   };
 
   private sendResult = async (result: string) => {

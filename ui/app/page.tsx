@@ -1,7 +1,17 @@
 import React from "react";
-import SessionManager from "@/app/session/session_manager";
+import Session_manager from "@/app/session/session_manager";
 import path from "path";
 import * as fs from "fs";
+
+export const dynamic = "force-dynamic";
+
+function getInterpreterUrl() {
+  const interpreterUrl = process.env.INTERPRETER_URL;
+  if (interpreterUrl === undefined) {
+    throw new Error("INTERPRETER_URL is undefined");
+  }
+  return interpreterUrl;
+}
 
 function getVersion(): Promise<string> {
   const versionDir = path.dirname(
@@ -20,5 +30,7 @@ function getVersion(): Promise<string> {
 }
 
 export default async function Home() {
-  return <SessionManager version={await getVersion()} />;
+  const interpreterUrl = getInterpreterUrl();
+  const version = await getVersion();
+  return <Session_manager interpreterUrl={interpreterUrl} version={version} />;
 }

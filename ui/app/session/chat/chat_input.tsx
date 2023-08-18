@@ -1,13 +1,17 @@
 import React from "react";
 import { BiSend } from "react-icons/bi";
+import thinkingImg from "./thinking.gif";
+import Image from "next/image";
 
 export default function ChatInput({
   innerRef,
   disabled,
+  llmAnimation,
   onMessage,
 }: {
   innerRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   disabled: boolean;
+  llmAnimation: boolean;
   onMessage: (message: string) => void;
 }) {
   const [message, setMessage] = React.useState<string>("");
@@ -32,8 +36,8 @@ export default function ChatInput({
   };
 
   return (
-    <div>
-      <div className="flex gap-2 bg-white drop-shadow-sm border border-neutral-300 rounded-md p-4 focus-within:border-neutral-500">
+    <div className="relative">
+      <div className="relative flex gap-2 bg-white drop-shadow-sm border border-neutral-300 rounded-md p-4 focus-within:border-neutral-500 z-20">
         <div className="flex-1">
           <textarea
             ref={innerRef}
@@ -55,6 +59,11 @@ export default function ChatInput({
           <BiSend size={24} color={canSend ? "black" : "#aaa"} />
         </button>
       </div>
+      {llmAnimation && (
+        <div className="absolute left-4 top-[-48px] z-10">
+          <Image src={thinkingImg} alt="thinking" priority width={57} />
+        </div>
+      )}
     </div>
   );
 }
